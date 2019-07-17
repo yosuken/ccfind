@@ -5,69 +5,216 @@
 #    License: MIT license
 #
 
-desc "01.make_term_fasta"
-task "01.make_term_fasta" do |t|
+# {{{ procedures
+WriteBatch  = lambda do |outs, jdir, t|
+	outs.each_slice(10000).with_index(1){ |ls, idx|
+		open("#{jdir}/#{t.name.split(".")[1..-1]*"."}.#{idx}", "w"){ |fjob|
+			fjob.puts ls
+		}
+	}
+end
+
+RunBatch    = lambda do |jdir, queue, nthreads, mem, wtime, ncpus|
+	# [TODO] queue validation
+	Dir["#{jdir}/*"].sort_by{ |fin| fin.split(".")[-1].to_i }.each{ |fin|
+		if queue != ""
+			raise("`--queue #{queue}': invalid queue") unless %w|JP1 JP4 JP10 cdb|.include?(queue)
+			sh "qsubarraywww -q #{queue} -l ncpus=#{nthreads} -l mem=#{mem}gb -l walltime=#{wtime} #{fin}"
+		elsif ncpus != ""
+			raise("`--ncpus #{ncpus}': not an integer") if ncpus !~ /^\d+$/
+			sh "parallel --jobs #{ncpus} <#{fin}"
+		else
+			sh "sh #{fin}"
+		end
+	}
+end
+
+PrintStatus = lambda do |current, total, status, t|
+	puts ""
+	puts "\e[1;32m===== #{Time.now}\e[0m"
+	puts "\e[1;32m===== step #{current} / #{total} (#{t.name}) -- #{status}\e[0m"
+	puts ""
+	$stdout.flush
+end
+
+CheckVersion = lambda do |commands|
+	commands.each{ |command|
+		str = case command
+					when "makeblastdb"
+						%|makeblastdb -version 2>&1|
+					when "blastn"
+						%|blastn -version 2>&1|
+					when "ssearch"
+						%{ssearch 2>&1 |head -n 7 |tail -n 3}
+					when "ruby"
+						%|ruby --version 2>&1|
+					when "parallel"
+						%{LANG=C parallel --version 2>&1 |head -n 1}
+					end
+		puts ""
+		puts "\e[1;32m===== check version: #{command}\e[0m"
+		puts ""
+		puts "$ #{str}"
+		### run
+		puts `#{str}`
+		### flush
+		$stdout.flush
+	}
+end
+# }}} procedures
+
+
+# {{{ default (run all tasks)
+task :default do
+	### define tasks
+  tasks = %w|01-1.trim_fasta 01-2.makeblastdb 02.blastn 03.parse_blastn 04-1.prepare_ssearch 04-2.ssearch 04-3.parse_ssearch 04-4.aln_extend 04-5.make_circ_list_and_fasta|
+
+  ### constants
+  Fin    = ENV["fin"]
+  Size   = ENV["size"].to_i
+  Len    = ENV["len"].to_i
+  Idt    = ENV["idt"].to_i
+
+  dir    = ENV["dir"]
+  Sdir   = "#{dir}/tmp/S"
+  Edir   = "#{dir}/tmp/E"
+  Odir   = "#{dir}/tmp/O"
+  Rdir   = "#{dir}/result"
+  Jdir   = "#{dir}/batch"
+
+  Sfa    = "#{Sdir}/S#{Size}.fasta"
+  Efa    = "#{Edir}/E#{Size}.fasta"
+  Otab   = "#{Odir}/blastn.out"
+  Olog   = "#{Odir}/blastn.log"
+
+  Dbsize = 10_000_000 ## blastn -dbsize
+  MaxTS  = 10_000_000 ## baastn -max_target_seqs
+  Evalue = ENV["evalue"]||"10"
+
+	Qname  = ENV["queue"]||""
+	Wtime  = ENV["wtime"]||"24:00:00"
+	Ncpus  = ENV["ncpus"]||""    
+	Nthreads = "1".to_i              
+	Mem      = Nthreads * 12
+
+	### check version
+	commands  = %w|makeblastdb blastn ssearch ruby|
+	commands += %w|parallel| if Ncpus != ""
+	CheckVersion.call(commands)
+
+	### run
+	NumStep  = tasks.size
+	tasks.each.with_index(1){ |task, idx|
+		Rake::Task[task].invoke(idx)
+	}
+end
+# }}} default
+
+
+# {{{ tasks
+desc "01-1.trim_fasta"
+task "01-1.trim_fasta", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+
 	# [!!!] sequences are skipped if length is < (2 x Size).
-	dir  = ENV["dir"]
-	fin  = ENV["fin"]
-	Size = ENV["Size"].to_i
-	sdir = "#{dir}/node/S"
-	edir = "#{dir}/node/E"
-	odir = "#{dir}/node/O"
-	[odir, sdir, edir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
+  [Odir, Sdir, Edir, Rdir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
 
-	ldir = "#{dir}/result"
-	mkdir_p ldir unless File.directory?(ldir)
-
-	open("#{ldir}/01.skipped.list", "w"){ |fskip|
-		IO.read(fin).split(/^>/)[1..-1].each{ |ent|
-			label, *seq = ent.split(/\n/)
+  outS = []
+  outE = []
+	open("#{Rdir}/01.skipped.list", "w"){ |fskip|
+		IO.read(Fin).split(/^>/)[1..-1].each{ |ent|
+			lab, *seq = ent.split(/\n/)
 			seq = seq*""
 			if seq.size < 2 * Size # length
-				fskip.puts [label, "#{seq.size} nt (< #{2 * Size} nt)"]*"\t"
+				fskip.puts [lab, "#{seq.size} nt (< #{2 * Size} nt)"]*"\t"
 				next 
 			end
-			open("#{sdir}/#{label}.fasta", "w"){ |fout1|
-				fout1.puts [">"+label, seq[0, Size]]
-			}
-			open("#{edir}/#{label}.fasta", "w"){ |fout2|
-				fout2.puts [">"+label, seq[-Size..-1]]
-			}
+      outS << [">"+lab, seq[0, Size]]*"\n"
+      outE << [">"+lab, seq[-Size..-1]]*"\n"
 		}
 	}
+  open(Sfa, "w"){ |foutS| foutS.puts outS }
+  open(Efa, "w"){ |foutE| foutE.puts outE }
 end
-desc "02.ssearch"
-task "02.ssearch" do |t|
-	dir  = ENV["dir"]
-	sdir = "#{dir}/node/S"
+desc "01-2.makeblastdb"
+task "01-2.makeblastdb", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
 
-	Dir["#{sdir}/*.fasta"].each{ |sfile|
-		node  = File.basename(sfile).split(".")[0..-2]*"."
-		efile = sfile.gsub(%r{/S/}, "/E/")
-		odir  = "#{dir}/node/O"
-		ofile = "#{odir}/#{node}.ssearch.StoE.out"
+  command = "makeblastdb -dbtype nucl -in #{Efa} -out #{Efa} -title #{File.basename(Efa)} 2>#{Efa}.makeblastdb.log"
+  sh command
+end
+desc "02.blastn"
+task "02.blastn", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+
+  command = "blastn -dust no -word_size 12 -strand plus -dbsize #{Dbsize} -max_target_seqs #{MaxTS} -num_threads #{Ncpus == "" ? 1 : Ncpus} -evalue #{Evalue} -outfmt 6 -db #{Efa} -query #{Sfa} -out #{Otab} 2>#{Olog}"
+  sh command
+end
+desc "03.parse_blastn"
+task "03.parse_blastn", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+
+  open("#{Rdir}/03.blastn.hit.out", "w"){ |fout|
+    IO.readlines(Otab).each{ |l| 
+      next if l =~ /^#/
+      a = l.chomp.split("\t")
+      next if a[0] != a[1]
+      fout.puts l 
+    }
+  }
+end
+desc "04-1.prepare_ssearch"
+task "04-1.prepare_ssearch", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+
+  jdir = "#{Jdir}/04-1"; mkdir_p jdir
+
+  sdir = "#{Sdir}/each"
+  edir = "#{Edir}/each"
+  odir = "#{Odir}/each"
+	[odir, sdir, edir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
+
+  labs = {} ### store BLASTn-positive sequences
+  IO.readlines("#{Rdir}/03.blastn.hit.out").each{ |l|
+    lab = l.chomp.split("\t")[0]
+    labs[lab] = 1
+  }
+
+  [Sfa, Efa].zip([sdir, edir]){ |fa, dir|
+    IO.read(fa).split(/^>/)[1..-1].each{ |ent|
+      lab, *seq = ent.split("\n")
+      next unless labs[lab] ### skip if no hit by BLASTn
+      open("#{dir}/#{lab}.fasta", "w"){ |fw|
+        fw.puts [">"+lab, seq]
+      }
+    }
+  }
+
+  outs = []
+  labs.each_key{ |lab|
+    sfile = "#{sdir}/#{lab}.fasta"
+    efile = "#{edir}/#{lab}.fasta"
+    ofile = "#{odir}/#{lab}.ssearch.out"
 		command = "ssearch36 -3 -n -m 8 -T 1 #{sfile} #{efile} >#{ofile}"
-		$stderr.puts command
+    outs << command
+  }
 
-		IO.popen(command, :err => [:child, :out]){ |pipe|
-			pipe.each_line{ |l|
-				$stderr.puts l
-			}
-		}
-		raise if $?.exitstatus != 0
-	}
+	WriteBatch.call(outs, jdir, t)
 end
-desc "03.parse_ssearch"
-task "03.parse_ssearch" do |t|
-	dir  = ENV["dir"]
-	Len  = ENV["Len"].to_i
-	odir = "#{dir}/result"
+desc "04-2.ssearch"
+task "04-2.ssearch", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+  jdir = "#{Jdir}/04-1" ## output of 04-1
+	RunBatch.call(jdir, Qname, Nthreads, Mem, Wtime, Ncpus)
+end
+desc "04-3.parse_ssearch"
+task "04-3.parse_ssearch", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+  fout1 = open("#{Rdir}/03.ssearch.all.out", "w")
+  fout2 = open("#{Rdir}/03.ssearch.aln.out", "w")
+  fout3 = open("#{Rdir}/03.ssearch.aln.idt80.out", "w")
 
-	fout1 = open("#{odir}/03.all.out", "w")
-	fout2 = open("#{odir}/03.aln.out", "w")
-	fout3 = open("#{odir}/03.aln.idt80.out", "w")
-	# fout4 = open("#{odir}/03.aln.idt90.out", "w")
-	Dir["#{dir}/node/O/*.ssearch.StoE.out"].each{ |fin|
+	Dir["#{Odir}/each/*.ssearch.out"].each{ |fin|
 		IO.readlines(fin).each{ |l| 
 			next if l =~ /^#/
 			fout1.puts l 
@@ -76,73 +223,72 @@ task "03.parse_ssearch" do |t|
 			fout2.puts l 
 			next if a[2].to_f < 80  # %idt >= 80
 			fout3.puts l 
-			# next if a[2].to_f < 90  # %idt >= 90
-			# fout4.puts l 
 		}
 	}
-	# [fout1, fout2, fout3, fout4].each{ |_fout| _fout.close }
 	[fout1, fout2, fout3].each{ |_fout| _fout.close }
 end
-desc "04.aln_extend_to_term"
-task "04.aln_extend_to_term" do |t|
-	dir  = ENV["dir"]
-	Size = ENV["Size"].to_i
-	odir = "#{dir}/result"
+desc "04-4.aln_extend"
+task "04-4.aln_extend", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+  fin  = "#{Rdir}/03.ssearch.aln.idt80.out"
+  fout = "#{Rdir}/04.ssearch.aln.idt80.extend.out"
+  open(fout, "w"){ |fw|
+    IO.readlines(fin).each{ |l|
+      a = l.chomp.split("\t")
+      aln_len, mismatch, gap, q_start, q_stop, s_start, s_stop = a.values_at(3..9).map(&:to_i)
 
-	Dir["#{odir}/03.aln.idt*.out"].each{ |fin|
-		open("#{fin.split(".")[0..-2].join(".").gsub(/03\.aln/, "04.aln")}.extend.out", "w"){ |fout|
-			IO.readlines(fin).each{ |l|
-				a = l.chomp.split("\t")
-				aln_len, mismatch, gap, q_start, q_stop, s_start, s_stop = a.values_at(3..9).map(&:to_i)
+      # calc offset
+      start_offset = q_start - 1
+      stop_offset  = Size - s_stop
 
-				# calc offset
-				start_offset = q_start - 1
-				stop_offset  = Size - s_stop
+      # fix alignment
+      s_start  -= start_offset
+      q_start  -= start_offset
+      s_stop   += stop_offset
+      q_stop   += stop_offset
+      aln_len  += start_offset + stop_offset
+      mismatch += start_offset + stop_offset
 
-				# fix alignment
-				s_start  -= start_offset
-				q_start  -= start_offset
-				s_stop   += stop_offset
-				q_stop   += stop_offset
-				aln_len  += start_offset + stop_offset
-				mismatch += start_offset + stop_offset
+      # validation1
+      ($stderr.puts [1, a]*"\t"; next) if s_start < 1
+      # ($stderr.puts [2, a]*"\t"; next) if q_stop  > Size
 
-				# validation1
-				($stderr.puts [1, a]*"\t"; next) if s_start < 1
-				($stderr.puts [2, a]*"\t"; next) if q_stop  > Size
-
-				idt = (aln_len - mismatch - gap).to_f / aln_len * 100
-				idt = "%.2f" % idt
-				fout.puts [a[0..1], idt, aln_len, mismatch, gap, q_start, q_stop, s_start, s_stop, a[10..-1]]*"\t"
-			}
-		}
-	}
+      idt = (aln_len - mismatch - gap).to_f / aln_len * 100
+      idt = "%.2f" % idt
+      fw.puts [a[0..1], idt, aln_len, mismatch, gap, q_start, q_stop, s_start, s_stop, a[10..-1]]*"\t"
+    }
+  }
 end
-desc "05.make_circ_list_and_fasta"
-task "05.make_circ_list_and_fasta" do |t|
-	dir    = ENV["dir"]
-	Idt    = ENV["Idt"].to_i
-	Size   = ENV["Size"].to_i
-	fin    = ENV["fin"]
-	odir   = "#{dir}/result"
-	fin0   = "#{odir}/04.aln.idt80.extend.out"
-	fout   = open("#{odir}/05.circ.detected.out", "w")
-	foutfa = open("#{odir}/05.circ.noTR.fasta", "w")   # ALL fasta (if circular, Terminal Redundancy is trimmed)
+desc "04-5.make_circ_list_and_fasta"
+task "04-5.make_circ_list_and_fasta", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+  fin0  = "#{Rdir}/04.ssearch.aln.idt80.extend.out"
+	fout0 = open("#{Rdir}/05.circ.detected.out", "w")
+	fout1 = open("#{Rdir}/05.circ.fasta", "w")      # fasta of circular sequence
+  fout2 = open("#{Rdir}/05.circ.noTR.fasta", "w") # fasta of circular sequence (Terminal Redundancy at the end of sequence is trimmed)
 
-	node2remove_len = {}
+	lab2remove_len = {}
 	IO.readlines(fin0).select{ |l| l.chomp.split(/\t/)[2].to_f >= Idt }.each{ |l|
-		fout.puts l
+		fout0.puts l
 		a = l.chomp.split(/\t/)
-		node = a[0]
+		lab = a[0]
 		s_start, s_stop = a.values_at(8..9).map(&:to_i)
-		node2remove_len[node] = s_stop - s_start + 1
+		lab2remove_len[lab] = s_stop - s_start + 1
 	}
-	IO.read(fin).split(/^>/)[1..-1].each{ |ent|
-		node, *seq = ent.split("\n")
-		seq = seq*""
-		if remove_len = node2remove_len[node]
-			seq = seq[0, seq.size - remove_len] # remove the last 'remove_len' seq
-		end
-		foutfa.puts [">"+node, seq.scan(/.{1,70}/)]
+
+	IO.read(Fin).split(/^>/)[1..-1].each{ |ent|
+		lab, *seq = ent.split("\n")
+
+    ### skip non-circular
+    next unless remove_len = lab2remove_len[lab]
+
+    seq  = seq.join("")
+    _seq = seq[0, seq.size - remove_len] # remove the last 'remove_len' seq
+
+		fout1.puts [">"+lab,  seq]
+		fout2.puts [">"+lab, _seq]
 	}
+
+  [fout0, fout1, fout2].each{ |fout| fout.close }
 end
+# }}} tasks
