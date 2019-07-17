@@ -33,7 +33,7 @@ $PROGNAME can be used for any contig/genome, but cutoff values (see below) shoul
 - ruby (ver >=2.0) 
 
 [32m[usage][0m
-$ $PROGNAME <input fasta> <output dir> [-i <min %identity> -l <min aligned len> -L <terminal fragment size>]
+$ $PROGNAME <input fasta> <output dir> [options]
 
 - <output dir> should not exist.
 
