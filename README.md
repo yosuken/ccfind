@@ -1,15 +1,15 @@
 
-# ccfind - circular complete sequence finder by detecting terminal redundancy
+# ccfind - Circular Complete sequence FINDer
 
 ## description
-ccfind is tool to find circular complete sequence by detecting terminal redundancy.
-ccfind can be used for any contig/genome, but cutoff values (see below) should be carefully considered.
+* `ccfind` is a general tool to find circular complete sequences by detection of terminal redundancy. Originally, this tool is intended for identification of complete virus genomes.
+* `ccfind` can be used for any contig/genome, but cutoff values (see `algorithm` section) should be carefully considered.
 
 ## requirements
 * ssearch (included in [FASTA package](http://fasta.bioch.virginia.edu/fasta_www2/fasta_list2.shtml))
 * BLAST+ 
 * Ruby (ver >=2.0)
-* GNU parallel (for parallel computing)
+* GNU parallel (if you need parallel computing)
 
 ## algorithm
 1. extract the first and last N bp (N is specified by `--terminal-fragment-size`) for each input sequence. Note that if sequence length is less than N x 2, the sequence will be ignored.
@@ -17,7 +17,7 @@ ccfind can be used for any contig/genome, but cutoff values (see below) should b
 3. For pairs that passed the screening, compute alignment between them by `ssearch`.
 4. If the alignment is not begin with the start of the first part, extend alignments to the start (regarding the exended region as mismatch).
 5. If the alignment is not begin with the end of the last part, extend alignments to the end (regarding the exended region as mismatch).
-6. extract 'good' alignment defined by `--min-percent-identity` and `--min-aligned-length`.
+6. extract 'good' alignment defined by cutoff values (`--min-percent-identity` and `--min-aligned-length`).
 
 ## usage 
 ```
@@ -58,7 +58,7 @@ $ ccfind <input fasta> <output dir> [options]
     --queue        [JP1]    -- queue for computation
 
 [output files]
-result/05.circ.detected.out -- list of sequence with terminal redundancy.s
+result/05.circ.detected.out -- list of sequence with terminal redundancy.
 result/05.circ.fasta        -- fasta file of sequences with terminal redundancy.
 result/05.circ.noTR.fasta   -- fasta file of sequences with terminal redundancy, but the detected terminal redundnacy at the end of sequence is removed.
 ```

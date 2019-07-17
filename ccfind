@@ -54,7 +54,7 @@ $ $PROGNAME <input fasta> <output dir> [options]
     --queue        [JP1]    -- queue for computation
 
 [32m[output files][0m
-result/05.circ.detected.out -- list of sequence with terminal redundancy.s
+result/05.circ.detected.out -- list of sequence with terminal redundancy.
 result/05.circ.fasta        -- fasta file of sequences with terminal redundancy.
 result/05.circ.noTR.fasta   -- fasta file of sequences with terminal redundancy, but the detected terminal redundnacy at the end of sequence is removed.
 EOF
