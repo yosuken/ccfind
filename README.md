@@ -15,8 +15,8 @@
 1. extract the first and last `N` bp (`N` is specified by `--terminal-fragment-size`) for each input sequence. Note that if sequence length is less than `N` x 2, the sequence will be ignored.
 2. detect sequence homology between the two fragments by `blastn` (as screening).
 3. For pairs that passed the screening, compute alignment between them by `ssearch`.
-4. If the alignment is not begin with the start of the first part, extend alignments to the start with regarding the exended region as mismatch.
-5. If the alignment is not begin with the end of the last part, extend alignments to the end with regarding the exended region as mismatch.
+4. If the alignment is not begin with the start of the first part, extend alignments to the start, with regarding the exended region as mismatch.
+5. If the alignment is not begin with the end of the last part, extend alignments to the end, with regarding the exended region as mismatch.
 6. extract 'good' alignment defined by cutoff values (`--min-percent-identity` and `--min-aligned-length`).
 
 ## usage 
