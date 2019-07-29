@@ -50,6 +50,8 @@ CheckVersion = lambda do |commands|
 						%|ruby --version 2>&1|
 					when "parallel"
 						%{LANG=C parallel --version 2>&1 |head -n 1}
+					when "prodigal"
+						%{prodigal 2>&1 |head -n 2 |tail -n 1}
 					end
 		puts ""
 		puts "\e[1;32m===== check version: #{command}\e[0m"
@@ -67,7 +69,9 @@ end
 # {{{ default (run all tasks)
 task :default do
 	### define tasks
-  tasks = %w|01-1.trim_fasta 01-2.makeblastdb 02.blastn 03.parse_blastn 04-1.prepare_ssearch 04-2.ssearch 04-3.parse_ssearch 04-4.aln_extend 04-5.make_circ_list_and_fasta|
+  tasks  = %w|01-1.trim_fasta 01-2.makeblastdb 02.blastn 03.parse_blastn|
+  tasks += %w|04-1.prepare_ssearch 04-2.ssearch 04-3.parse_ssearch 04-4.aln_extend 04-5.make_circ_list_and_fasta|
+  tasks += %w|04-6.prodigal_for_circ 04-7.move_start_position_for_circ| ## optional
 
   ### constants
   Fin    = ENV["fin"]
@@ -80,6 +84,7 @@ task :default do
   Edir   = "#{dir}/tmp/E"
   Odir   = "#{dir}/tmp/O"
   Rdir   = "#{dir}/result"
+  Ridir  = "#{dir}/result/intermediate"
   Jdir   = "#{dir}/batch"
 
   Sfa    = "#{Sdir}/S#{Size}.fasta"
@@ -117,11 +122,11 @@ task "01-1.trim_fasta", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
 
 	# [!!!] sequences are skipped if length is < (2 x Size).
-  [Odir, Sdir, Edir, Rdir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
+  [Odir, Sdir, Edir, Rdir, Ridir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
 
   outS = []
   outE = []
-	open("#{Rdir}/01.skipped.list", "w"){ |fskip|
+	open("#{Ridir}/01.skipped.list", "w"){ |fskip|
 		IO.read(Fin).split(/^>/)[1..-1].each{ |ent|
 			lab, *seq = ent.split(/\n/)
 			seq = seq*""
@@ -154,7 +159,7 @@ desc "03.parse_blastn"
 task "03.parse_blastn", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
 
-  open("#{Rdir}/03.blastn.hit.out", "w"){ |fout|
+  open("#{Ridir}/03.blastn.hit.out", "w"){ |fout|
     IO.readlines(Otab).each{ |l| 
       next if l =~ /^#/
       a = l.chomp.split("\t")
@@ -175,7 +180,7 @@ task "04-1.prepare_ssearch", ["step"] do |t, args|
 	[odir, sdir, edir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
 
   labs = {} ### store BLASTn-positive sequences
-  IO.readlines("#{Rdir}/03.blastn.hit.out").each{ |l|
+  IO.readlines("#{Ridir}/03.blastn.hit.out").each{ |l|
     lab = l.chomp.split("\t")[0]
     labs[lab] = 1
   }
@@ -210,9 +215,9 @@ end
 desc "04-3.parse_ssearch"
 task "04-3.parse_ssearch", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
-  fout1 = open("#{Rdir}/03.ssearch.all.out", "w")
-  fout2 = open("#{Rdir}/03.ssearch.aln.out", "w")
-  fout3 = open("#{Rdir}/03.ssearch.aln.idt80.out", "w")
+  fout1 = open("#{Ridir}/03.ssearch.all.out", "w")
+  fout2 = open("#{Ridir}/03.ssearch.aln.out", "w")
+  fout3 = open("#{Ridir}/03.ssearch.aln.idt80.out", "w")
 
 	Dir["#{Odir}/each/*.ssearch.out"].each{ |fin|
 		IO.readlines(fin).each{ |l| 
@@ -230,8 +235,8 @@ end
 desc "04-4.aln_extend"
 task "04-4.aln_extend", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
-  fin  = "#{Rdir}/03.ssearch.aln.idt80.out"
-  fout = "#{Rdir}/04.ssearch.aln.idt80.extend.out"
+  fin  = "#{Ridir}/03.ssearch.aln.idt80.out"
+  fout = "#{Ridir}/04.ssearch.aln.idt80.extend.out"
   open(fout, "w"){ |fw|
     IO.readlines(fin).each{ |l|
       a = l.chomp.split("\t")
@@ -262,10 +267,10 @@ end
 desc "04-5.make_circ_list_and_fasta"
 task "04-5.make_circ_list_and_fasta", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
-  fin0  = "#{Rdir}/04.ssearch.aln.idt80.extend.out"
-	fout0 = open("#{Rdir}/05.circ.detected.out", "w")
-	fout1 = open("#{Rdir}/05.circ.fasta", "w")      # fasta of circular sequence
-  fout2 = open("#{Rdir}/05.circ.noTR.fasta", "w") # fasta of circular sequence (Terminal Redundancy at the end of sequence is trimmed)
+  fin0  = "#{Ridir}/04.ssearch.aln.idt80.extend.out"
+	fout0 = open("#{Rdir}/circ.detected.list", "w")
+	fout1 = open("#{Rdir}/circ.fasta", "w")      # fasta of circular sequence
+  fout2 = open("#{Rdir}/circ.noTR.fasta", "w") # fasta of circular sequence (Terminal Redundancy at the end of sequence is trimmed)
 
 	lab2remove_len = {}
 	IO.readlines(fin0).select{ |l| l.chomp.split(/\t/)[2].to_f >= Idt }.each{ |l|
@@ -282,7 +287,7 @@ task "04-5.make_circ_list_and_fasta", ["step"] do |t, args|
     ### skip non-circular
     next unless remove_len = lab2remove_len[lab]
 
-    seq  = seq.join("")
+    seq  = seq.join("").gsub(/\s+/, "")
     _seq = seq[0, seq.size - remove_len] # remove the last 'remove_len' seq
 
 		fout1.puts [">"+lab,  seq]
@@ -290,5 +295,26 @@ task "04-5.make_circ_list_and_fasta", ["step"] do |t, args|
 	}
 
   [fout0, fout1, fout2].each{ |fout| fout.close }
+end
+desc "04-6.prodigal_for_circ"
+task "04-6.prodigal_for_circ", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+  fin0  = "#{Rdir}/circ.fasta"
+  fout  = "#{Ridir}/05.circ.fasta.gff"
+
+  sh "prodigal -p meta -i #{fin0} -f gff -o #{fout}"
+end
+desc "04-7.move_start_position_for_circ"
+task "04-7.move_start_position_for_circ", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+  ### move start position to the rightmost nucleotide in the rightmost intergenic region
+  fin0  = "#{Rdir}/circ.noTR.fasta"
+  fin1  = "#{Rdir}/circ.fasta"
+  fin   = "#{Ridir}/05.circ.fasta.gff"
+  fout  = "#{Rdir}/circ.noTR.cPerm.fasta"
+
+	script = "#{File.dirname(__FILE__)}/script/#{t.name}.rb"
+
+  sh "ruby #{script} #{fin0} #{fin1} #{fin} #{fout}"
 end
 # }}} tasks
