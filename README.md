@@ -22,7 +22,7 @@
 
 ## usage 
 ```
-### ccfind ver 1.3.0 (2018-07-27) ###
+### ccfind ver 1.3.1 (2018-08-21) ###
 
 [description]
 ccfind is tool to find circular complete sequence by detecting terminal redundancy.
@@ -37,7 +37,7 @@ ccfind can be used for any contig/genome, but cutoff values (see below) should b
                     (https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)
 - prodigal       -- for gene prediction. used for circular permutation arrangement of circularly detected sequences.
                     Rightmost intergenic region is selected as termini.
-                                                                                (https://github.com/hyattpd/Prodigal)
+                    (https://github.com/hyattpd/Prodigal)
 - ruby (ver >=2.0)
 
 [usage]
