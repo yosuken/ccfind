@@ -69,7 +69,7 @@ end
 # {{{ default (run all tasks)
 task :default do
 	### define tasks
-  tasks  = %w|01-1.trim_fasta 01-2.makeblastdb 02.blastn 03.parse_blastn|
+  tasks  = %w|01-0.prepare_fasta 01-1.trim_fasta 01-2.makeblastdb 02.blastn 03.parse_blastn|
   tasks += %w|04-1.prepare_ssearch 04-2.ssearch 04-3.parse_ssearch 04-4.aln_extend 04-5.make_circ_list_and_fasta|
   tasks += %w|04-6.prodigal_for_circ 04-7.move_start_position_for_circ| ## optional
 
@@ -80,6 +80,7 @@ task :default do
   Idt    = ENV["idt"].to_i
 
   dir    = ENV["dir"]
+  Idir   = "#{dir}/tmp/I"
   Sdir   = "#{dir}/tmp/S"
   Edir   = "#{dir}/tmp/E"
   Odir   = "#{dir}/tmp/O"
@@ -87,6 +88,7 @@ task :default do
   Ridir  = "#{dir}/result/intermediate"
   Jdir   = "#{dir}/batch"
 
+  Fa     = "#{Idir}/in.fasta"
   Sfa    = "#{Sdir}/S#{Size}.fasta"
   Efa    = "#{Edir}/E#{Size}.fasta"
   Otab   = "#{Odir}/blastn.out"
@@ -117,23 +119,49 @@ end
 
 
 # {{{ tasks
+desc "01-0.prepare_fasta"
+task "01-0.prepare_fasta", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+
+	### [1] sequences are skipped if length is < (2 x Size).
+	### [2] clean comment line (only ids)
+	### [3] id ducplication check
+  [Idir, Sdir, Edir, Odir, Rdir, Ridir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
+
+  ids = {}
+  open(Fa, "w"){ |fw|
+    IO.read(Fin).split(/^>/)[1..-1].each{ |ent|
+      lab, *seq = ent.split(/\n/)
+
+      ### [1] sequences are skipped if length is < (2 x Size).
+      seq = seq*""
+      if seq.size < 2 * Size # length
+        fskip.puts [">#{lab}", "#{seq.size} nt (< #{2 * Size} nt)"]*"\t"
+        next 
+      end
+
+      ### [2] clean comment line (only ids)
+      id = lab.split(/\s+/)[0]
+
+      ### [3] id ducplication check
+      raise("sequence name is not unique (#{id}). Aborting...") if ids[id]
+      ids[id] = 1
+
+      ### make output
+      fw.puts [">"+id, seq]
+    }
+  }
+end
 desc "01-1.trim_fasta"
 task "01-1.trim_fasta", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
 
-	# [!!!] sequences are skipped if length is < (2 x Size).
-  [Odir, Sdir, Edir, Rdir, Ridir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
-
   outS = []
   outE = []
 	open("#{Ridir}/01.skipped.list", "w"){ |fskip|
-		IO.read(Fin).split(/^>/)[1..-1].each{ |ent|
+		IO.read(Fa).split(/^>/)[1..-1].each{ |ent|
 			lab, *seq = ent.split(/\n/)
 			seq = seq*""
-			if seq.size < 2 * Size # length
-				fskip.puts [lab, "#{seq.size} nt (< #{2 * Size} nt)"]*"\t"
-				next 
-			end
       outS << [">"+lab, seq[0, Size]]*"\n"
       outE << [">"+lab, seq[-Size..-1]]*"\n"
 		}
@@ -281,7 +309,7 @@ task "04-5.make_circ_list_and_fasta", ["step"] do |t, args|
 		lab2remove_len[lab] = s_stop - s_start + 1
 	}
 
-	IO.read(Fin).split(/^>/)[1..-1].each{ |ent|
+	IO.read(Fa).split(/^>/)[1..-1].each{ |ent|
 		lab, *seq = ent.split("\n")
 
     ### skip non-circular

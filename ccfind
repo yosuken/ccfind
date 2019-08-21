@@ -7,11 +7,11 @@
 #
 
 PROGNAME=$(basename $0)
-VERSION="1.3.0"
+VERSION="1.3.1"
 PROGNAMEc="[35m$PROGNAME[0m"
 Errmsg="[31m[error][0m"
 Sccmsg="[32m[success][0m"
-Moddate="2018-07-27"
+Moddate="2018-08-21"
 incmd="$0 $*"
 
 
@@ -32,7 +32,7 @@ $PROGNAME can be used for any contig/genome, but cutoff values (see below) shoul
                     (https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)
 - prodigal       -- for gene prediction. used for circular permutation arrangement of circularly detected sequences.
                     Rightmost intergenic region is selected as termini.
-										(https://github.com/hyattpd/Prodigal)
+                    (https://github.com/hyattpd/Prodigal)
 - ruby (ver >=2.0) 
 
 [32m[usage][0m
