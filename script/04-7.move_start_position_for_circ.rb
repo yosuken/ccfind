@@ -1,5 +1,6 @@
 
-fin0, fin1, fin, fout = ARGV
+# fin0, fin1, fin, fout = ARGV
+fin0, fin1, fgffs, fgff, fout = ARGV
 fw = open(fout, "w")
 
 def write_fasta(ent, newend, newlen, fw)
@@ -77,27 +78,46 @@ IO.read(fin1).split(/^>/)[1..-1].each{ |ent|
   id2len[id] = seq.join.gsub(/\s+/, "").size
 }
 
-flag = 0
-ls = []
-IO.readlines(fin).each{ |l|
-  if l =~ /^#/
-    if flag == 1 ### process
-      if ls.size > 0
-        id = ls[0].split("\t")[0]
-        parse_and_write(ls, id2newlen[id], id2len[id], id2ent[id], fw)
-        ls = []
-      end
-    end
-    flag = 0
-  else
-    flag = 1
-    ls << l
+# flag = 0
+# ls = []
+# IO.readlines(fin).each{ |l|
+#   if l =~ /^#/
+#     if flag == 1 ### process
+#       if ls.size > 0
+#         id = ls[0].split("\t")[0]
+#         parse_and_write(ls, id2newlen[id], id2len[id], id2ent[id], fw)
+#         ls = []
+#       end
+#     end
+#     flag = 0
+#   else
+#     flag = 1
+#     ls << l
+#   end
+# }
+# ## process last entry
+# if ls.size > 0
+#   id = ls[0].split("\t")[0]
+#   parse_and_write(ls, id2newlen[id], id2len[id], id2ent[id], fw)
+# end
+
+id2ls = Hash.new{ |h, i| h[i] = [] }
+open(fgff, "w"){ |fw| ### write concat gff (sequence order is not the same as fasta)
+  Dir[fgffs].each{ |fin|
+    IO.readlines(fin).each{ |l|
+      fw.puts l
+      next if l =~ /^#/
+      id = l.chomp.split("\t")[0]
+      id2ls[id] << l
+    }
+  }
+}
+
+id2len.each_key{ |id|
+  ls = id2ls[id]
+  if ls.size > 0
+    parse_and_write(ls, id2newlen[id], id2len[id], id2ent[id], fw)
   end
 }
-## process last entry
-if ls.size > 0
-  id = ls[0].split("\t")[0]
-  parse_and_write(ls, id2newlen[id], id2len[id], id2ent[id], fw)
-end
 
 fw.close

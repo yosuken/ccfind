@@ -1,12 +1,13 @@
 #
-#  ccfind.rake - tool for finding circular complete sequences by detecting terminal redundancy of each sequence
+#  ccfind.rake - circular complete sequences finder
 #
-#    Copyright: 2017 (C) Yosuke Nishimura (yosuke@kuicr.kyoto-u.ac.jp)
+#    Copyright: 2017-2019 (C) Yosuke Nishimura (ynishimura@aori.u-tokyo.ac.jp)
 #    License: MIT license
 #
 
 # {{{ procedures
 WriteBatch  = lambda do |outs, jdir, t|
+  mkdir_p(jdir, { :verbose => nil }) unless File.directory?(jdir)
 	outs.each_slice(10000).with_index(1){ |ls, idx|
 		open("#{jdir}/#{t.name.split(".")[1..-1]*"."}.#{idx}", "w"){ |fjob|
 			fjob.puts ls
@@ -14,13 +15,9 @@ WriteBatch  = lambda do |outs, jdir, t|
 	}
 end
 
-RunBatch    = lambda do |jdir, queue, nthreads, mem, wtime, ncpus|
-	# [TODO] queue validation
+RunBatch    = lambda do |jdir, ncpus|
 	Dir["#{jdir}/*"].sort_by{ |fin| fin.split(".")[-1].to_i }.each{ |fin|
-		if queue != ""
-			raise("`--queue #{queue}': invalid queue") unless %w|JP1 JP4 JP10 cdb|.include?(queue)
-			sh "qsubarraywww -q #{queue} -l ncpus=#{nthreads} -l mem=#{mem}gb -l walltime=#{wtime} #{fin}"
-		elsif ncpus != ""
+		if ncpus != ""
 			raise("`--ncpus #{ncpus}': not an integer") if ncpus !~ /^\d+$/
 			sh "parallel --jobs #{ncpus} <#{fin}"
 		else
@@ -71,38 +68,34 @@ task :default do
 	### define tasks
   tasks  = %w|01-0.prepare_fasta 01-1.trim_fasta 01-2.makeblastdb 02.blastn 03.parse_blastn|
   tasks += %w|04-1.prepare_ssearch 04-2.ssearch 04-3.parse_ssearch 04-4.aln_extend 04-5.make_circ_list_and_fasta|
-  tasks += %w|04-6.prodigal_for_circ 04-7.move_start_position_for_circ| ## optional
+  tasks += %w|04-6.prodigal_for_circ 04-7.move_start_position_for_circ|
 
   ### constants
-  Fin    = ENV["fin"]
-  Size   = ENV["size"].to_i
-  Len    = ENV["len"].to_i
-  Idt    = ENV["idt"].to_i
+  Fin      = ENV["fin"]
+  Size     = ENV["size"].to_i
+  Len      = ENV["len"].to_i
+  Idt      = ENV["idt"].to_i
 
-  dir    = ENV["dir"]
-  Idir   = "#{dir}/tmp/I"
-  Sdir   = "#{dir}/tmp/S"
-  Edir   = "#{dir}/tmp/E"
-  Odir   = "#{dir}/tmp/O"
-  Rdir   = "#{dir}/result"
-  Ridir  = "#{dir}/result/intermediate"
-  Jdir   = "#{dir}/batch"
+  dir      = ENV["dir"]
+  Idir     = "#{dir}/tmp/I" ## input
+  Sdir     = "#{dir}/tmp/S" ## start region
+  Edir     = "#{dir}/tmp/E" ## end region
+  Odir     = "#{dir}/tmp/O" ## output
+  Pdir     = "#{dir}/tmp/P" ## prodigal
+  Rdir     = "#{dir}/result"
+  Ridir    = "#{dir}/result/intermediate"
+  Jdir     = "#{dir}/batch"
 
-  Fa     = "#{Idir}/in.fasta"
-  Sfa    = "#{Sdir}/S#{Size}.fasta"
-  Efa    = "#{Edir}/E#{Size}.fasta"
-  Otab   = "#{Odir}/blastn.out"
-  Olog   = "#{Odir}/blastn.log"
+  Fa       = "#{Idir}/in.fasta"
 
-  Dbsize = 10_000_000 ## blastn -dbsize
-  MaxTS  = 10_000_000 ## baastn -max_target_seqs
-  Evalue = ENV["evalue"]||"10"
+  Nbin     = 1000       ## number of sequences to split (faster computation for big input)
+  Dbsize   = 10_000_000 ## blastn -dbsize
+  MaxTS    = 10_000_000 ## baastn -max_target_seqs
+  Evalue   = ENV["evalue"]||"10"
 
-	Qname  = ENV["queue"]||""
-	Wtime  = ENV["wtime"]||"24:00:00"
-	Ncpus  = ENV["ncpus"]||""    
-	Nthreads = "1".to_i              
-	Mem      = Nthreads * 12
+	Qname    = ENV["queue"]||""
+	Wtime    = ENV["wtime"]||"24:00:00"
+	Ncpus    = ENV["ncpus"]||""    
 
 	### check version
 	commands  = %w|makeblastdb blastn ssearch ruby|
@@ -126,7 +119,7 @@ task "01-0.prepare_fasta", ["step"] do |t, args|
 	### [1] sequences are skipped if length is < (2 x Size).
 	### [2] clean comment line (only ids)
 	### [3] id ducplication check
-  [Idir, Sdir, Edir, Odir, Rdir, Ridir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
+  [Idir, Sdir, Edir, Odir, Pdir, Rdir, Ridir].each{ |_dir| mkdir_p(_dir, { :verbose => nil }) unless File.directory?(_dir) }
 
   ids = {}
   open(Fa, "w"){ |fw|
@@ -166,33 +159,61 @@ task "01-1.trim_fasta", ["step"] do |t, args|
       outE << [">"+lab, seq[-Size..-1]]*"\n"
 		}
 	}
-  open(Sfa, "w"){ |foutS| foutS.puts outS }
-  open(Efa, "w"){ |foutE| foutE.puts outE }
+
+  outS.each_slice(Nbin).with_index(1){ |ents, idx|
+    sdir = "#{Sdir}/split#{Size}/#{idx}"
+    mkdir_p(sdir, { :verbose => nil })
+    open("#{sdir}/S#{Size}.fasta", "w"){ |foutS| foutS.puts ents }
+  }
+  outE.each_slice(Nbin).with_index(1){ |ents, idx|
+    edir = "#{Edir}/split#{Size}/#{idx}"
+    mkdir_p(edir, { :verbose => nil })
+    open("#{edir}/E#{Size}.fasta", "w"){ |foutE| foutE.puts ents }
+  }
 end
 desc "01-2.makeblastdb"
 task "01-2.makeblastdb", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
+  jdir = "#{Jdir}/01-2"
 
-  command = "makeblastdb -dbtype nucl -in #{Efa} -out #{Efa} -title #{File.basename(Efa)} 2>#{Efa}.makeblastdb.log"
-  sh command
+  outs = []
+  Dir["#{Edir}/split#{Size}/*"].sort_by{ |i| File.basename(i).to_i }.each{ |edir|
+    efa = "#{edir}/E#{Size}.fasta"
+    outs << "makeblastdb -dbtype nucl -in #{efa} -out #{efa} -title #{File.basename(efa)} >#{efa}.makeblastdb.log 2>&1"
+  }
+
+	WriteBatch.call(outs, jdir, t)
+	RunBatch.call(jdir, Ncpus)
 end
 desc "02.blastn"
 task "02.blastn", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
+  jdir = "#{Jdir}/02"
 
-  command = "blastn -dust no -word_size 12 -strand plus -dbsize #{Dbsize} -max_target_seqs #{MaxTS} -num_threads #{Ncpus == "" ? 1 : Ncpus} -evalue #{Evalue} -outfmt 6 -db #{Efa} -query #{Sfa} -out #{Otab} 2>#{Olog}"
-  sh command
+  outs = []
+  Dir["#{Edir}/split#{Size}/*"].map{ |i| File.basename(i).to_i }.sort.each{ |idx|
+    efa  = "#{Edir}/split#{Size}/#{idx}/E#{Size}.fasta"
+    sfa  = "#{Sdir}/split#{Size}/#{idx}/S#{Size}.fasta"
+    odir = "#{Odir}/split#{Size}/#{idx}"
+    mkdir_p(odir, { :verbose => nil })
+    outs << "blastn -dust no -word_size 12 -strand plus -dbsize #{Dbsize} -max_target_seqs #{MaxTS} -num_threads 1 -evalue #{Evalue} -outfmt 6 -db #{efa} -query #{sfa} -out #{odir}/blastn.out 2>#{odir}/blastn.log"
+  }
+
+	WriteBatch.call(outs, jdir, t)
+	RunBatch.call(jdir, Ncpus)
 end
 desc "03.parse_blastn"
 task "03.parse_blastn", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
 
   open("#{Ridir}/03.blastn.hit.out", "w"){ |fout|
-    IO.readlines(Otab).each{ |l| 
-      next if l =~ /^#/
-      a = l.chomp.split("\t")
-      next if a[0] != a[1]
-      fout.puts l 
+    Dir["#{Odir}/split#{Size}/*/blastn.out"].sort_by{ |i| i.split("/")[-2].to_i }.each{ |ftab|
+      IO.readlines(ftab).each{ |l| 
+        next if l =~ /^#/
+        a = l.chomp.split("\t")
+        next if a[0] != a[1]
+        fout.puts l 
+      }
     }
   }
 end
@@ -200,12 +221,11 @@ desc "04-1.prepare_ssearch"
 task "04-1.prepare_ssearch", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
 
-  jdir = "#{Jdir}/04-1"; mkdir_p jdir
-
+  jdir = "#{Jdir}/04-1"
   sdir = "#{Sdir}/each"
   edir = "#{Edir}/each"
   odir = "#{Odir}/each"
-	[odir, sdir, edir].each{ |_dir| mkdir_p _dir unless File.directory?(_dir) }
+	[odir, sdir, edir].each{ |_dir| mkdir_p(_dir, { :verbose => nil }) unless File.directory?(_dir) }
 
   labs = {} ### store BLASTn-positive sequences
   IO.readlines("#{Ridir}/03.blastn.hit.out").each{ |l|
@@ -213,12 +233,16 @@ task "04-1.prepare_ssearch", ["step"] do |t, args|
     labs[lab] = 1
   }
 
-  [Sfa, Efa].zip([sdir, edir]){ |fa, dir|
-    IO.read(fa).split(/^>/)[1..-1].each{ |ent|
-      lab, *seq = ent.split("\n")
-      next unless labs[lab] ### skip if no hit by BLASTn
-      open("#{dir}/#{lab}.fasta", "w"){ |fw|
-        fw.puts [">"+lab, seq]
+  sfas = Dir["#{Sdir}/split#{Size}/*/S#{Size}.fasta"].sort_by{ |i| i.split("/")[-2].to_i }
+  efas = Dir["#{Edir}/split#{Size}/*/E#{Size}.fasta"].sort_by{ |i| i.split("/")[-2].to_i }
+  [sfas, efas].zip([sdir, edir]){ |fas, dir|
+    fas.each{ |fa|
+      IO.read(fa).split(/^>/)[1..-1].each{ |ent|
+        lab, *seq = ent.split("\n")
+        next unless labs[lab] ### skip if no hit by BLASTn
+        open("#{dir}/#{lab}.fasta", "w"){ |fw|
+          fw.puts [">"+lab, seq]
+        }
       }
     }
   }
@@ -238,7 +262,7 @@ desc "04-2.ssearch"
 task "04-2.ssearch", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
   jdir = "#{Jdir}/04-1" ## output of 04-1
-	RunBatch.call(jdir, Qname, Nthreads, Mem, Wtime, Ncpus)
+	RunBatch.call(jdir, Ncpus)
 end
 desc "04-3.parse_ssearch"
 task "04-3.parse_ssearch", ["step"] do |t, args|
@@ -247,16 +271,19 @@ task "04-3.parse_ssearch", ["step"] do |t, args|
   fout2 = open("#{Ridir}/03.ssearch.aln.out", "w")
   fout3 = open("#{Ridir}/03.ssearch.aln.idt80.out", "w")
 
-	Dir["#{Odir}/each/*.ssearch.out"].each{ |fin|
-		IO.readlines(fin).each{ |l| 
-			next if l =~ /^#/
-			fout1.puts l 
-			a = l.chomp.split("\t")
-			next if a[3].to_i < Len # aln_len >= Len
-			fout2.puts l 
-			next if a[2].to_f < 80  # %idt >= 80
-			fout3.puts l 
-		}
+  IO.read(Fa).split(/^>/)[1..-1].each{ |ent|
+    lab, *seq = ent.split("\n")
+    Dir["#{Odir}/each/#{lab}.ssearch.out"].each{ |fin|
+      IO.readlines(fin).each{ |l| 
+        next if l =~ /^#/
+        fout1.puts l 
+        a = l.chomp.split("\t")
+        next if a[3].to_i < Len # aln_len >= Len
+        fout2.puts l 
+        next if a[2].to_f < 80  # %idt >= 80
+        fout3.puts l 
+      }
+    }
 	}
 	[fout1, fout2, fout3].each{ |_fout| _fout.close }
 end
@@ -284,7 +311,7 @@ task "04-4.aln_extend", ["step"] do |t, args|
 
       # validation1
       ($stderr.puts [1, a]*"\t"; next) if s_start < 1
-      # ($stderr.puts [2, a]*"\t"; next) if q_stop  > Size
+      ($stderr.puts [2, a]*"\t"; next) if q_stop  > Size
 
       idt = (aln_len - mismatch - gap).to_f / aln_len * 100
       idt = "%.2f" % idt
@@ -327,22 +354,39 @@ end
 desc "04-6.prodigal_for_circ"
 task "04-6.prodigal_for_circ", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
-  fin0  = "#{Rdir}/circ.fasta"
-  fout  = "#{Ridir}/05.circ.fasta.gff"
+  n      = Ncpus != "" ? Ncpus.to_i : 1
+  entset = Array.new(n, "")
 
-  sh "prodigal -p meta -i #{fin0} -f gff -o #{fout}"
+  fin0  = "#{Rdir}/circ.fasta"
+  IO.read(fin0).split(/^>/)[1..-1].each.with_index{ |ent, idx|
+    entset[idx % n] += ">#{ent}"
+  }
+
+  outs = []
+  entset.each.with_index(1){ |ents, idx|
+    fin   = "#{Pdir}/circ.#{idx}.fasta"
+    open(fin, "w"){ |fw| fw.puts ents }
+    fout  = "#{Pdir}/05.circ.#{idx}.fasta.gff"
+    flog  = "#{Pdir}/prodigal.#{idx}.log"
+    outs << "prodigal -p meta -i #{fin} -f gff -o #{fout} >#{flog} 2>&1"
+  }
+
+  jdir = "#{Jdir}/04-6"
+	WriteBatch.call(outs, jdir, t)
+	RunBatch.call(jdir, Ncpus)
 end
 desc "04-7.move_start_position_for_circ"
 task "04-7.move_start_position_for_circ", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
-  ### move start position to the rightmost nucleotide in the rightmost intergenic region
+  ### move start position to the last nucleotide in the last intergenic region
   fin0  = "#{Rdir}/circ.noTR.fasta"
   fin1  = "#{Rdir}/circ.fasta"
-  fin   = "#{Ridir}/05.circ.fasta.gff"
+  fgffs = "#{Pdir}/05.circ.*.fasta.gff"
+  fgff  = "#{Ridir}/05.circ.fasta.gff"
   fout  = "#{Rdir}/circ.noTR.cPerm.fasta"
 
 	script = "#{File.dirname(__FILE__)}/script/#{t.name}.rb"
 
-  sh "ruby #{script} #{fin0} #{fin1} #{fin} #{fout}"
+  sh %|ruby #{script} #{fin0} #{fin1} '#{fgffs}' #{fgff} #{fout}|
 end
 # }}} tasks
