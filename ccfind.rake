@@ -65,23 +65,21 @@ end
 
 # {{{ default (run all tasks)
 task :default do
-	### define tasks
-  tasks  = %w|01-0.prepare_fasta 01-1.trim_fasta 01-2.makeblastdb 02.blastn 03.parse_blastn|
-  tasks += %w|04-1.prepare_ssearch 04-2.ssearch 04-3.parse_ssearch 04-4.aln_extend 04-5.make_circ_list_and_fasta|
-  tasks += %w|04-6.prodigal_for_circ 04-7.move_start_position_for_circ|
-
   ### constants
   Fin      = ENV["fin"]
   Size     = ENV["size"].to_i
   Len      = ENV["len"].to_i
   Idt      = ENV["idt"].to_i
 
+	Ncpus    = ENV["ncpus"]||""    
+
   dir      = ENV["dir"]
-  Idir     = "#{dir}/tmp/I" ## input
-  Sdir     = "#{dir}/tmp/S" ## start region
-  Edir     = "#{dir}/tmp/E" ## end region
-  Odir     = "#{dir}/tmp/O" ## output
-  Pdir     = "#{dir}/tmp/P" ## prodigal
+  Tdir     = "#{dir}/tmp" ## tmpdir
+  Idir     = "#{Tdir}/I" ## input
+  Sdir     = "#{Tdir}/S" ## start region
+  Edir     = "#{Tdir}/E" ## end region
+  Odir     = "#{Tdir}/O" ## output
+  Pdir     = "#{Tdir}/P" ## prodigal
   Rdir     = "#{dir}/result"
   Ridir    = "#{dir}/result/intermediate"
   Jdir     = "#{dir}/batch"
@@ -91,11 +89,15 @@ task :default do
   Nbin     = 1000       ## number of sequences to split (faster computation for big input)
   Dbsize   = 10_000_000 ## blastn -dbsize
   MaxTS    = 10_000_000 ## baastn -max_target_seqs
-  Evalue   = ENV["evalue"]||"10"
+  Evalue   = 10         ## for blastn screening
 
-	Qname    = ENV["queue"]||""
-	Wtime    = ENV["wtime"]||"24:00:00"
-	Ncpus    = ENV["ncpus"]||""    
+  Keeptmp  = ENV["keeptmp"]||""
+
+	### define tasks
+  tasks  = %w|01-0.prepare_fasta 01-1.trim_fasta 01-2.makeblastdb 02.blastn 03.parse_blastn|
+  tasks += %w|04-1.prepare_ssearch 04-2.ssearch 04-3.parse_ssearch 04-4.aln_extend 04-5.make_circ_list_and_fasta|
+  tasks += %w|04-6.prodigal_for_circ 04-7.move_start_position_for_circ|
+  tasks += %w|04-8.remove_tmpdir| if Keeptmp != "true"
 
 	### check version
 	commands  = %w|makeblastdb blastn ssearch ruby|
@@ -252,7 +254,7 @@ task "04-1.prepare_ssearch", ["step"] do |t, args|
     sfile = "#{sdir}/#{lab}.fasta"
     efile = "#{edir}/#{lab}.fasta"
     ofile = "#{odir}/#{lab}.ssearch.out"
-		command = "ssearch36 -3 -n -m 8 -T 1 #{sfile} #{efile} >#{ofile}"
+		command = "ssearch -3 -n -m 8 -T 1 #{sfile} #{efile} >#{ofile}"
     outs << command
   }
 
@@ -388,5 +390,11 @@ task "04-7.move_start_position_for_circ", ["step"] do |t, args|
 	script = "#{File.dirname(__FILE__)}/script/#{t.name}.rb"
 
   sh %|ruby #{script} #{fin0} #{fin1} '#{fgffs}' #{fgff} #{fout}|
+end
+desc "04-8.remove_tmpdir"
+task "04-8.remove_tmpdir", ["step"] do |t, args|
+	PrintStatus.call(args.step, NumStep, "START", t)
+  ### remove tmpdir
+  rm_rf(Tdir, { :verbose => nil })
 end
 # }}} tasks

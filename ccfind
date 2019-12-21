@@ -1,17 +1,17 @@
 #!/bin/bash
 #
-#  ccfind - circular complete sequence finder
+#  ccfind - circular complete genome finder
 #
 #    Copyright: 2017-2019 (C) Yosuke Nishimura (ynishimura@aori.u-tokyo.ac.jp)
 #    License: MIT license
 #
 
 PROGNAME=$(basename $0)
-VERSION="1.4.0"
+VERSION="1.4.1"
 PROGNAMEc="[35m$PROGNAME[0m"
 Errmsg="[31m[error][0m"
 Sccmsg="[32m[success][0m"
-Moddate="2019-12-20"
+Moddate="2019-12-21"
 incmd="$0 $*"
 
 
@@ -20,18 +20,19 @@ read -r -d '' usage <<EOF
 [35m### $PROGNAME ver $VERSION ($Moddate) ###
 
 [32m[description][0m
-$PROGNAME - Circular Complete sequence FINDer.
+$PROGNAME - Circular Complete genome FINDer.
 
-$PROGNAME detects completion of nucleotide sequences with clues of terminal redundancy.
-$PROGNAME was originally intended for identification of complete virus genomes from metagenome assembly.
+$PROGNAME is a general tool to detect circular complete genomes with clues of terminal redundancy.
+$PROGNAME was originally designed for identification of complete virus genomes from metagenome assembly.
 $PROGNAME can be used for any contig/genome, but cutoff values should be carefully considered (see README).
+It should be noted that terminal redundancy (circularity) does not necessarily mean completion of the sequence. Partial genomes might be detected as circular contigs for some reasons (e.g., sequence repeats).
 
 [32m[dependencies][0m
 - ssearch        -- Smith-Waterman alignment, included in FASTA program
                     (http://fasta.bioch.virginia.edu/fasta_www2/fasta_list2.shtml)
 - blastn         -- nucleotide blast, included in the BLAST+ program
                     (https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)
-- prodigal       -- a gene prediction tool, used to detect a well-arranged start position of a circular complete sequence (do not split ORF).
+- prodigal       -- a gene prediction tool, used to detect a well-arranged start position of a circular complete genome (do not split ORF).
                     (https://github.com/hyattpd/Prodigal)
 - ruby (ver >=2.0) 
 
@@ -53,8 +54,11 @@ $ $PROGNAME <input fasta> <output dir> [options]
   (use GNU parallel)
     --ncpus        [int]        -- number of jobs in parallel	
 
+  (misc)
+    --preserve-tmpdir (default: off) -- do not remove temporary files
+
 [32m[output files][0m
-result/circ.detected.list    -- list of circular complete sequences.
+result/circ.detected.list    -- list of complete genomes (circular sequences).
 result/circ.fasta            -- circular sequences in fasta format. Terminal redundancy is preserved (without modification).
 result/circ.noTR.fasta       -- circular sequences in fasta format. Terminal redundancy is trimmed (redundant region at the end is removed).
 result/circ.noTR.cPerm.fasta -- circular sequences in fasta format. Terminal redundancy is trimmed and circular permutation is perfomred, trying not to split any ORF into two fragments (the last intergenic region detected by prodigal is selected as termini).
@@ -73,6 +77,10 @@ do
 		'-v'|'--version' )
 			echo $VERSION
 			exit 1
+			;;
+		'--preserve-tmpdir' )
+			keeptmp=true
+			shift 1
 			;;
 		'-i'|'--min-percent-identity' )
 			if [[ -z "$2" ]] || [[ "$2" =~ ^-+ ]] ; then
@@ -104,14 +112,6 @@ do
 				exit 1
 			fi
 			ncpus="$2"
-			shift 2
-			;;
-		'--wtime' )
-			if [[ -z "$2" ]] || [[ "$2" =~ ^-+ ]] ; then
-				echo "$Errmsg option requires an argument -- $1" 1>&2
-				exit 1
-			fi
-			wtime="$2"
 			shift 2
 			;;
 		'--'|'-' )
@@ -240,6 +240,6 @@ echo "$incmdlog" |tee -a $logdir/$jobname.log
 trap 'after_run 1' 1 2 3 9 15
 
 ### run
-rake -f $rakefile dir="$dir" fin="$fin" size="$size" len="$len" idt="$idt" ncpus="$ncpus" wtime="$wtime" 2>&1 |tee -a $logdir/$jobname.log
+rake -f $rakefile dir="$dir" fin="$fin" size="$size" len="$len" idt="$idt" ncpus="$ncpus" keeptmp="$keeptmp" 2>&1 |tee -a $logdir/$jobname.log
 st=$(( ${PIPESTATUS[0]} + ${PIPESTATUS[1]} ))
 after_run $ST

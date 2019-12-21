@@ -1,10 +1,11 @@
 
-# ccfind - Circular Complete sequence FINDer
+# ccfind - Circular Complete genome FINDer
 
 ## description
-* `ccfind` is a general tool to detect circular complete sequences with clues of terminal redundancy.
-* `ccfind` was originally intended for identification of complete virus genomes from metagenome assembly (see `citation`).
-* `ccfind` can be used for any contig/genome, but cutoff values should be carefully considered.
+* `ccfind` is a general tool to detect circular complete genomes with clues of terminal redundancy.
+* `ccfind` was originally designed for identification of complete virus genomes from metagenome assembly (see `citation`).
+* `ccfind` can be used for any contig/genome, but cutoff values should be carefully considered (see README).
+* It should be noted that terminal redundancy (circularity) does not necessarily mean completion of the sequence. Partial genomes might be detected as circular contigs for some reasons (e.g., sequence repeats).
 
 ## requirements
 * ssearch (in [FASTA v36 package](http://fasta.bioch.virginia.edu/fasta_www2/fasta_list2.shtml))
@@ -23,21 +24,22 @@
 
 ## usage 
 ```
-### ccfind ver 1.4.0 (2019-12-20) ###
+### ccfind ver 1.4.1 (2019-12-21) ###
 
 [description]
-ccfind - Circular Complete sequence FINDer.
+ccfind - Circular Complete genome FINDer.
 
-ccfind detects completion of nucleotide sequences with clues of terminal redundancy.
-ccfind was originally intended for identification of complete virus genomes from metagenome assembly.
+ccfind is a general tool to detect circular complete genomes with clues of terminal redundancy.
+ccfind was originally designed for identification of complete virus genomes from metagenome assembly.
 ccfind can be used for any contig/genome, but cutoff values should be carefully considered (see README).
+It should be noted that terminal redundancy (circularity) does not necessarily mean completion of the sequence. Partial genomes might be detected as circular contigs for some reasons (e.g., sequence repeats).
 
 [dependencies]
 - ssearch        -- Smith-Waterman alignment, included in FASTA program
                     (http://fasta.bioch.virginia.edu/fasta_www2/fasta_list2.shtml)
 - blastn         -- nucleotide blast, included in the BLAST+ program
                     (https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)
-- prodigal       -- a gene prediction tool, used to detect a well-arranged start position of a circular complete sequence (do not split ORF).
+- prodigal       -- a gene prediction tool, used to detect a well-arranged start position of a circular complete genome (do not split ORF).
                     (https://github.com/hyattpd/Prodigal)
 - ruby (ver >=2.0)
 
@@ -59,15 +61,18 @@ $ ccfind <input fasta> <output dir> [options]
   (use GNU parallel)
     --ncpus        [int]        -- number of jobs in parallel
 
+  (misc)
+    --preserve-tmpdir (default: off) -- do not remove temporary files
+
 [output files]
-result/circ.detected.list    -- list of circular complete sequences.
+result/circ.detected.list    -- list of complete genomes (circular sequences).
 result/circ.fasta            -- circular sequences in fasta format. Terminal redundancy is preserved (without modification).
 result/circ.noTR.fasta       -- circular sequences in fasta format. Terminal redundancy is trimmed (redundant region at the end is removed).
 result/circ.noTR.cPerm.fasta -- circular sequences in fasta format. Terminal redundancy is trimmed and circular permutation is perfomred, trying not to split any ORF into two fragments (the last intergenic region detected by prodigal is selected as termini).
 ```
 
 ## citation
-If you use results genereted by ccfind in your research, please cite:
+If you use results genereted by ccfind in your research, please cite the original work:
 ```
 Environmental Viral Genomes Shed New Light on Virus-Host Interactions in the Ocean.
 mSphere 2(2):e00359-16 (2017), doi:10.1128/mSphere.00359-16
