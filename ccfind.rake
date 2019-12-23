@@ -19,7 +19,10 @@ RunBatch    = lambda do |jdir, ncpus|
 	Dir["#{jdir}/*"].sort_by{ |fin| fin.split(".")[-1].to_i }.each{ |fin|
 		if ncpus != ""
 			raise("`--ncpus #{ncpus}': not an integer") if ncpus !~ /^\d+$/
-			sh "parallel --jobs #{ncpus} <#{fin}"
+
+      ldir = "#{File.dirname(fin)}/log_parallel"
+      mkdir_p ldir unless File.directory?(ldir)
+      sh "parallel --jobs #{ncpus} --joblog #{ldir}/#{File.basename(fin)} <#{fin}"
 		else
 			sh "sh #{fin}"
 		end
@@ -73,16 +76,15 @@ task :default do
 
 	Ncpus    = ENV["ncpus"]||""    
 
-  dir      = ENV["dir"]
-  Tdir     = "#{dir}/tmp" ## tmpdir
+  Tdir     = "tmp"       ## tmpdir
   Idir     = "#{Tdir}/I" ## input
   Sdir     = "#{Tdir}/S" ## start region
   Edir     = "#{Tdir}/E" ## end region
   Odir     = "#{Tdir}/O" ## output
   Pdir     = "#{Tdir}/P" ## prodigal
-  Rdir     = "#{dir}/result"
-  Ridir    = "#{dir}/result/intermediate"
-  Jdir     = "#{dir}/batch"
+  Rdir     = "result"
+  Ridir    = "result/intermediate"
+  Jdir     = "batch"
 
   Fa       = "#{Idir}/in.fasta"
 

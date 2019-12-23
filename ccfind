@@ -7,11 +7,11 @@
 #
 
 PROGNAME=$(basename $0)
-VERSION="1.4.1"
+VERSION="1.4.2"
 PROGNAMEc="[35m$PROGNAME[0m"
 Errmsg="[31m[error][0m"
 Sccmsg="[32m[success][0m"
-Moddate="2019-12-21"
+Moddate="2019-12-23"
 incmd="$0 $*"
 
 
@@ -182,8 +182,6 @@ dir=${params[1]}
 idt="${idt:-94}"
 len="${len:-50}"
 size="${size:-500}"
-nthread="${nthread:-1}"
-wtime="${wtime:-24:00:00}"
 
 ### rakefile and log directory
 pushd `dirname $0` > /dev/null
@@ -240,6 +238,12 @@ echo "$incmdlog" |tee -a $logdir/$jobname.log
 trap 'after_run 1' 1 2 3 9 15
 
 ### run
-rake -f $rakefile dir="$dir" fin="$fin" size="$size" len="$len" idt="$idt" ncpus="$ncpus" keeptmp="$keeptmp" 2>&1 |tee -a $logdir/$jobname.log
+### move to output directory and then back --- input file path of ssearch should not be too long (when length is 127, it returns an error '*** error [comp_lib9.c:642] cannot open library <input file>x')
+absolute_fin=$(echo "$fin" |ruby -e 'puts File.absolute_path("#{$stdin.read.strip}")') 
+
+pushd "$dir" > /dev/null
+rake -f $rakefile fin="$absolute_fin" size="$size" len="$len" idt="$idt" ncpus="$ncpus" keeptmp="$keeptmp" 2>&1 |tee -a log/$jobname.log
 st=$(( ${PIPESTATUS[0]} + ${PIPESTATUS[1]} ))
+popd > /dev/null
+
 after_run $ST
