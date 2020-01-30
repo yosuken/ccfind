@@ -364,37 +364,46 @@ task "04-6.prodigal_for_circ", ["step"] do |t, args|
   n      = Ncpus != "" ? Ncpus.to_i : 1
   entset = Array.new(n, "")
 
-  fin0  = "#{Rdir}/circ.fasta"
-  IO.read(fin0).split(/^>/)[1..-1].each.with_index{ |ent, idx|
-    entset[idx % n] += ">#{ent}"
-  }
+  if File.zero?("#{Rdir}/circ.detected.list")
+    $stderr.puts "SKIP 04-6 because circular sequence is not detected."
+  else
+    fin0   = "#{Rdir}/circ.fasta"
+    IO.read(fin0).split(/^>/)[1..-1].each.with_index{ |ent, idx|
+      entset[idx % n] += ">#{ent}"
+    }
 
-  outs = []
-  entset.each.with_index(1){ |ents, idx|
-    fin   = "#{Pdir}/circ.#{idx}.fasta"
-    open(fin, "w"){ |fw| fw.puts ents }
-    fout  = "#{Pdir}/05.circ.#{idx}.fasta.gff"
-    flog  = "#{Pdir}/prodigal.#{idx}.log"
-    outs << "prodigal -p meta -i #{fin} -f gff -o #{fout} >#{flog} 2>&1"
-  }
+    outs = []
+    entset.each.with_index(1){ |ents, idx|
+      fin   = "#{Pdir}/circ.#{idx}.fasta"
+      open(fin, "w"){ |fw| fw.puts ents }
+      fout  = "#{Pdir}/05.circ.#{idx}.fasta.gff"
+      flog  = "#{Pdir}/prodigal.#{idx}.log"
+      outs << "prodigal -p meta -i #{fin} -f gff -o #{fout} >#{flog} 2>&1"
+    }
 
-  jdir = "#{Jdir}/04-6"
-	WriteBatch.call(outs, jdir, t)
-	RunBatch.call(jdir, Ncpus)
+    jdir = "#{Jdir}/04-6"
+    WriteBatch.call(outs, jdir, t)
+    RunBatch.call(jdir, Ncpus)
+  end
 end
 desc "04-7.move_start_position_for_circ"
 task "04-7.move_start_position_for_circ", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
-  ### move start position to the last nucleotide in the last intergenic region
-  fin0  = "#{Rdir}/circ.noTR.fasta"
-  fin1  = "#{Rdir}/circ.fasta"
-  fgffs = "#{Pdir}/05.circ.*.fasta.gff"
-  fgff  = "#{Ridir}/05.circ.fasta.gff"
-  fout  = "#{Rdir}/circ.noTR.cPerm.fasta"
 
-	script = "#{File.dirname(__FILE__)}/script/#{t.name}.rb"
+  if File.zero?("#{Rdir}/circ.detected.list")
+    $stderr.puts "SKIP 04-7 because circular sequence is not detected."
+  else
+    ### move start position to the last nucleotide in the last intergenic region
+    fin0  = "#{Rdir}/circ.noTR.fasta"
+    fin1  = "#{Rdir}/circ.fasta"
+    fgffs = "#{Pdir}/05.circ.*.fasta.gff"
+    fgff  = "#{Ridir}/05.circ.fasta.gff"
+    fout  = "#{Rdir}/circ.noTR.cPerm.fasta"
 
-  sh %|ruby #{script} #{fin0} #{fin1} '#{fgffs}' #{fgff} #{fout}|
+    script = "#{File.dirname(__FILE__)}/script/#{t.name}.rb"
+
+    sh %|ruby #{script} #{fin0} #{fin1} '#{fgffs}' #{fgff} #{fout}|
+  end
 end
 desc "04-8.remove_tmpdir"
 task "04-8.remove_tmpdir", ["step"] do |t, args|
