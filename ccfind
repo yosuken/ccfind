@@ -7,11 +7,11 @@
 #
 
 PROGNAME=$(basename $0)
-VERSION="1.4.2"
+VERSION="1.4.3"
 PROGNAMEc="[35m$PROGNAME[0m"
 Errmsg="[31m[error][0m"
 Sccmsg="[32m[success][0m"
-Moddate="2019-12-23"
+Moddate="2020-01-30"
 incmd="$0 $*"
 
 
@@ -39,7 +39,7 @@ It should be noted that terminal redundancy (circularity) does not necessarily m
 [32m[usage][0m
 $ $PROGNAME <input fasta> <output dir> [options]
 
-- <output dir> should not exist.
+<output dir> should not exist.
 
 [32m[options][0m
   (general)
@@ -47,7 +47,7 @@ $ $PROGNAME <input fasta> <output dir> [options]
     -v, --version
 
   (cutoff values)
-    -L, --terminal-fragment-size  [int] (default: 500) -- should be longer than estimated terminal redundancy length. If sequence length is less than 2 x (this value), the sequence will be ignored and listed in "result/intermediate/01.skipped.list".
+    -L, --terminal-fragment-size  [int] (default: 500) -- should be longer than estimated terminal redundancy length. If sequence length is less than 2 x (this value), the sequence will be ignored and listed in "result/too_short_seq.list".
     -i, --min-percent-identity    [int] (default: 94)
     -l, --min-aligned-length      [int] (default: 50)
 
@@ -62,6 +62,7 @@ result/circ.detected.list    -- list of complete genomes (circular sequences).
 result/circ.fasta            -- circular sequences in fasta format. Terminal redundancy is preserved (without modification).
 result/circ.noTR.fasta       -- circular sequences in fasta format. Terminal redundancy is trimmed (redundant region at the end is removed).
 result/circ.noTR.cPerm.fasta -- circular sequences in fasta format. Terminal redundancy is trimmed and circular permutation is perfomred, trying not to split any ORF into two fragments (the last intergenic region detected by prodigal is selected as termini).
+result/too_short_seq.list    -- list of too short sequences that are excluded from analysis. See the above description of '--terminal-fragment-size'.
 EOF
 # }}} usage
 

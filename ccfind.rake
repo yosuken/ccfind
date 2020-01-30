@@ -1,7 +1,7 @@
 #
 #  ccfind.rake - circular complete sequences finder
 #
-#    Copyright: 2017-2019 (C) Yosuke Nishimura (ynishimura@aori.u-tokyo.ac.jp)
+#    Copyright: 2017- (C) Yosuke Nishimura (ynishimura@aori.u-tokyo.ac.jp)
 #    License: MIT license
 #
 
@@ -126,28 +126,33 @@ task "01-0.prepare_fasta", ["step"] do |t, args|
   [Idir, Sdir, Edir, Odir, Pdir, Rdir, Ridir].each{ |_dir| mkdir_p(_dir, { :verbose => nil }) unless File.directory?(_dir) }
 
   ids = {}
+  skip_count = 0
   open(Fa, "w"){ |fw|
-    IO.read(Fin).split(/^>/)[1..-1].each{ |ent|
-      lab, *seq = ent.split(/\n/)
+    open("#{Rdir}/too_short_seq.list", "w"){ |fskip|
+      IO.read(Fin).split(/^>/)[1..-1].each{ |ent|
+        lab, *seq = ent.split(/\n/)
 
-      ### [1] sequences are skipped if length is < (2 x Size).
-      seq = seq*""
-      if seq.size < 2 * Size # length
-        fskip.puts [">#{lab}", "#{seq.size} nt (< #{2 * Size} nt)"]*"\t"
-        next 
-      end
+        ### [1] sequences are skipped if length is < (2 x Size).
+        seq = seq*""
+        if seq.size < 2 * Size # length
+          fskip.puts ["#{lab}", "#{seq.size} nt (< #{2 * Size} nt)"]*"\t"
+          skip_count += 1
+          next 
+        end
 
-      ### [2] clean comment line (only ids)
-      id = lab.split(/\s+/)[0]
+        ### [2] clean comment line (only ids)
+        id = lab.split(/\s+/)[0]
 
-      ### [3] id ducplication check
-      raise("sequence name is not unique (#{id}). Aborting...") if ids[id]
-      ids[id] = 1
+        ### [3] id ducplication check
+        raise("sequence name is not unique (#{id}). Aborting...") if ids[id]
+        ids[id] = 1
 
-      ### make output
-      fw.puts [">"+id, seq]
+        ### make output
+        fw.puts [">"+id, seq]
+      }
     }
   }
+  $stderr.puts "[35m[Warning][0m #{skip_count} sequence(s) are found too short. These sequences are excluded from analysis." if skip_count > 0
 end
 desc "01-1.trim_fasta"
 task "01-1.trim_fasta", ["step"] do |t, args|
@@ -155,14 +160,12 @@ task "01-1.trim_fasta", ["step"] do |t, args|
 
   outS = []
   outE = []
-	open("#{Ridir}/01.skipped.list", "w"){ |fskip|
-		IO.read(Fa).split(/^>/)[1..-1].each{ |ent|
-			lab, *seq = ent.split(/\n/)
-			seq = seq*""
-      outS << [">"+lab, seq[0, Size]]*"\n"
-      outE << [">"+lab, seq[-Size..-1]]*"\n"
-		}
-	}
+  IO.read(Fa).split(/^>/)[1..-1].each{ |ent|
+    lab, *seq = ent.split(/\n/)
+    seq = seq*""
+    outS << [">"+lab, seq[0, Size]]*"\n"
+    outE << [">"+lab, seq[-Size..-1]]*"\n"
+  }
 
   outS.each_slice(Nbin).with_index(1){ |ents, idx|
     sdir = "#{Sdir}/split#{Size}/#{idx}"
