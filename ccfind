@@ -7,11 +7,11 @@
 #
 
 PROGNAME=$(basename $0)
-VERSION="1.4.3"
+VERSION="1.4.4"
 PROGNAMEc="[35m$PROGNAME[0m"
 Errmsg="[31m[error][0m"
 Sccmsg="[32m[success][0m"
-Moddate="2020-01-30"
+Moddate="2020-03-31"
 incmd="$0 $*"
 
 
@@ -28,7 +28,7 @@ $PROGNAME can be used for any contig/genome, but cutoff values should be careful
 It should be noted that terminal redundancy (circularity) does not necessarily mean completion of the sequence. Partial genomes might be detected as circular contigs for some reasons (e.g., sequence repeats).
 
 [32m[dependencies][0m
-- ssearch        -- Smith-Waterman alignment, included in FASTA program
+- ssearch36      -- Smith-Waterman alignment, included in FASTA program
                     (http://fasta.bioch.virginia.edu/fasta_www2/fasta_list2.shtml)
 - blastn         -- nucleotide blast, included in the BLAST+ program
                     (https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)
@@ -239,7 +239,7 @@ echo "$incmdlog" |tee -a $logdir/$jobname.log
 trap 'after_run 1' 1 2 3 9 15
 
 ### run
-### move to output directory and then back --- input file path of ssearch should not be too long (when length is 127, it returns an error '*** error [comp_lib9.c:642] cannot open library <input file>x')
+### move to output directory and then back --- input file path of ssearch36 should not be too long (when length is 127, it returns an error '*** error [comp_lib9.c:642] cannot open library <input file>x')
 absolute_fin=$(echo "$fin" |ruby -e 'puts File.absolute_path("#{$stdin.read.strip}")') 
 
 pushd "$dir" > /dev/null

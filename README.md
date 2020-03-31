@@ -24,7 +24,7 @@
 
 ## usage 
 ```
-### ccfind ver 1.4.3 (2020-01-30) ###
+### ccfind ver 1.4.4 (2020-03-31) ###
 
 [description]
 ccfind - Circular Complete genome FINDer.
@@ -35,7 +35,7 @@ ccfind can be used for any contig/genome, but cutoff values should be carefully 
 It should be noted that terminal redundancy (circularity) does not necessarily mean completion of the sequence. Partial genomes might be detected as circular contigs for some reasons (e.g., sequence repeats).
 
 [dependencies]
-- ssearch        -- Smith-Waterman alignment, included in FASTA program
+- ssearch36      -- Smith-Waterman alignment, included in FASTA program
                     (http://fasta.bioch.virginia.edu/fasta_www2/fasta_list2.shtml)
 - blastn         -- nucleotide blast, included in the BLAST+ program
                     (https://blast.ncbi.nlm.nih.gov/Blast.cgi?PAGE_TYPE=BlastDocs&DOC_TYPE=Download)

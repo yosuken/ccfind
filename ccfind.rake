@@ -44,8 +44,8 @@ CheckVersion = lambda do |commands|
 						%|makeblastdb -version 2>&1|
 					when "blastn"
 						%|blastn -version 2>&1|
-					when "ssearch"
-						%{ssearch 2>&1 |head -n 7 |tail -n 3}
+					when "ssearch36"
+						%{ssearch36 2>&1 |head -n 7 |tail -n 3}
 					when "ruby"
 						%|ruby --version 2>&1|
 					when "parallel"
@@ -102,7 +102,7 @@ task :default do
   tasks += %w|04-8.remove_tmpdir| if Keeptmp != "true"
 
 	### check version
-	commands  = %w|makeblastdb blastn ssearch ruby|
+	commands  = %w|makeblastdb blastn ssearch36 ruby|
 	commands += %w|parallel| if Ncpus != ""
 	CheckVersion.call(commands)
 
@@ -259,7 +259,7 @@ task "04-1.prepare_ssearch", ["step"] do |t, args|
     sfile = "#{sdir}/#{lab}.fasta"
     efile = "#{edir}/#{lab}.fasta"
     ofile = "#{odir}/#{lab}.ssearch.out"
-		command = "ssearch -3 -n -m 8 -T 1 #{sfile} #{efile} >#{ofile}"
+		command = "ssearch36 -3 -n -m 8 -T 1 #{sfile} #{efile} >#{ofile}"
     outs << command
   }
 
