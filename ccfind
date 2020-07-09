@@ -2,16 +2,16 @@
 #
 #  ccfind - circular complete genome finder
 #
-#    Copyright: 2017-2019 (C) Yosuke Nishimura (ynishimura@aori.u-tokyo.ac.jp)
+#    Copyright: 2017-2020 (C) Yosuke Nishimura (ynishimura@aori.u-tokyo.ac.jp)
 #    License: MIT license
 #
 
 PROGNAME=$(basename $0)
-VERSION="1.4.4"
+VERSION="1.4.5"
 PROGNAMEc="[35m$PROGNAME[0m"
 Errmsg="[31m[error][0m"
 Sccmsg="[32m[success][0m"
-Moddate="2020-03-31"
+Moddate="2020-07-09"
 incmd="$0 $*"
 
 

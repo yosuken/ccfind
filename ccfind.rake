@@ -17,14 +17,14 @@ end
 
 RunBatch    = lambda do |jdir, ncpus|
 	Dir["#{jdir}/*"].sort_by{ |fin| fin.split(".")[-1].to_i }.each{ |fin|
-		if ncpus != ""
+    if ncpus == "" or ncpus == "1"
+			sh "sh #{fin}"
+    else
 			raise("`--ncpus #{ncpus}': not an integer") if ncpus !~ /^\d+$/
 
       ldir = "#{File.dirname(fin)}/log_parallel"
       mkdir_p ldir unless File.directory?(ldir)
       sh "parallel --jobs #{ncpus} --joblog #{ldir}/#{File.basename(fin)} <#{fin}"
-		else
-			sh "sh #{fin}"
 		end
 	}
 end
@@ -152,7 +152,11 @@ task "01-0.prepare_fasta", ["step"] do |t, args|
       }
     }
   }
-  $stderr.puts "[35m[Warning][0m #{skip_count} sequence(s) are found too short. These sequences are excluded from analysis." if skip_count > 0
+  $stderr.puts "[35m[Warning][0m #{skip_count} sequence(s) are found too short. These sequences are excluded from analysis.\n\n" if skip_count > 0
+  if File.zero?(Fa)
+    $stderr.puts "[35m[Warning][0m No sequence is found after a removal of too short sequence. Aborting..."
+    exit(0)
+  end
 end
 desc "01-1.trim_fasta"
 task "01-1.trim_fasta", ["step"] do |t, args|
@@ -362,29 +366,36 @@ desc "04-6.prodigal_for_circ"
 task "04-6.prodigal_for_circ", ["step"] do |t, args|
 	PrintStatus.call(args.step, NumStep, "START", t)
   n      = Ncpus != "" ? Ncpus.to_i : 1
-  entset = Array.new(n, "")
 
   if File.zero?("#{Rdir}/circ.detected.list")
     $stderr.puts "SKIP 04-6 because circular sequence is not detected."
+    next
+  elsif (num = IO.readlines("#{Rdir}/circ.detected.list").size) < n  ### num of circular sequence is less than Ncpus
+    ncpus = num.to_s
+    n = num
   else
-    fin0   = "#{Rdir}/circ.fasta"
-    IO.read(fin0).split(/^>/)[1..-1].each.with_index{ |ent, idx|
-      entset[idx % n] += ">#{ent}"
-    }
-
-    outs = []
-    entset.each.with_index(1){ |ents, idx|
-      fin   = "#{Pdir}/circ.#{idx}.fasta"
-      open(fin, "w"){ |fw| fw.puts ents }
-      fout  = "#{Pdir}/05.circ.#{idx}.fasta.gff"
-      flog  = "#{Pdir}/prodigal.#{idx}.log"
-      outs << "prodigal -p meta -i #{fin} -f gff -o #{fout} >#{flog} 2>&1"
-    }
-
-    jdir = "#{Jdir}/04-6"
-    WriteBatch.call(outs, jdir, t)
-    RunBatch.call(jdir, Ncpus)
+    ncpus = Ncpus
   end
+
+  entset = Array.new(n, "")
+
+  fin0   = "#{Rdir}/circ.fasta"
+  IO.read(fin0).split(/^>/)[1..-1].each.with_index{ |ent, idx|
+    entset[idx % n] += ">#{ent}"
+  }
+
+  outs = []
+  entset.each.with_index(1){ |ents, idx|
+    fin   = "#{Pdir}/circ.#{idx}.fasta"
+    open(fin, "w"){ |fw| fw.puts ents }
+    fout  = "#{Pdir}/05.circ.#{idx}.fasta.gff"
+    flog  = "#{Pdir}/prodigal.#{idx}.log"
+    outs << "prodigal -p meta -i #{fin} -f gff -o #{fout} >#{flog} 2>&1"
+  }
+
+  jdir = "#{Jdir}/04-6"
+  WriteBatch.call(outs, jdir, t)
+  RunBatch.call(jdir, ncpus)     ### considering the case when num of circular sequence is less than Ncpus
 end
 desc "04-7.move_start_position_for_circ"
 task "04-7.move_start_position_for_circ", ["step"] do |t, args|
