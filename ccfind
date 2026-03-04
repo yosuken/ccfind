@@ -247,4 +247,4 @@ rake -f $rakefile fin="$absolute_fin" size="$size" len="$len" idt="$idt" ncpus="
 st=$(( ${PIPESTATUS[0]} + ${PIPESTATUS[1]} ))
 popd > /dev/null
 
-after_run $ST
+after_run $st
