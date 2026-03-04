@@ -24,7 +24,7 @@
 
 ## usage 
 ```
-### ccfind ver 1.4.5 (2020-07-09) ###
+### ccfind ver 1.4.6 (2026-03-04) ###
 
 [description]
 ccfind - Circular Complete genome FINDer.
